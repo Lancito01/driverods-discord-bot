@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment variables (Bot Token, Client ID)
+.env
+config.json
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Operating System files
+.DS_Store
+Thumbs.db
