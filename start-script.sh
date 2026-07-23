@@ -2,5 +2,5 @@
 
 npm run build
 while true; do
-    npm run start #"$1" #? Replace 'your_script.js' with the path to your Node.js script and pass the first argument
+    npm start #"$1" #? Replace 'your_script.js' with the path to your Node.js script and pass the first argument
 done

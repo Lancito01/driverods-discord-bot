@@ -48,3 +48,9 @@ export function logger(
     console.log(str);
     return;
 }
+
+export function fetchCarBrands(): object {
+    
+
+    return {};
+}
