@@ -18,20 +18,20 @@ Portal. Do not use a guild/server ID for this value.
 
 ## Slash commands
 
-The command registry in [`commands.json`](./commands.json) starts empty on purpose:
-the current bot has no `interactionCreate` handler. Add a command there only
-after its handler exists, so Discord never shows an unusable command.
+The command registry lives in [`commands.js`](./commands.js). Define commands
+there with Discord.js builders, then the manager serializes them before sending
+them to Discord.
 
 For example:
 
-```json
-[
-  {
-    "name": "ping",
-    "description": "Check whether DriverODS is online.",
-    "type": 1
-  }
-]
+```js
+const { SlashCommandBuilder } = require('discord.js');
+
+module.exports = [
+  new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Check whether DriverODS is online.'),
+];
 ```
 
 Run the manager and select each action from its menu:
@@ -46,7 +46,7 @@ and requires you to type `DEPLOY`, `CLEAR`, or `DELETE` before changing
 Discord.
 
 Deployment uses Discord's bulk-overwrite endpoint: the target scope will match
-`commands.json` exactly. If the registry is empty, the menu requires you to
+`commands.js` exactly. If the registry is empty, the menu requires you to
 type `CLEAR` before it removes registered commands.
 
 ## Leaving a guild

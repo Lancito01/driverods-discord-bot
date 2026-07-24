@@ -6,13 +6,17 @@ const { stdin, stdout } = require('node:process');
 
 require('dotenv').config({ path: path.resolve(__dirname, '..', '.env') });
 
-const commands = require('./commands');
+const commandBuilders = require('./commands');
 const {
     createRestClient,
     deleteSlashCommand,
     deploySlashCommands,
     listSlashCommands,
 } = require('./slash-commands');
+
+const commands = commandBuilders.map((command) =>
+    typeof command.toJSON === 'function' ? command.toJSON() : command,
+);
 
 function showCommands(registeredCommands) {
     if (registeredCommands.length === 0) {
@@ -132,8 +136,8 @@ async function main() {
     const prompt = (question) => readline.question(question);
 
     try {
-        console.log('DriverODS Slash Command Manager');
-        console.log('Commands are read from discord-tools/commands.json.');
+        console.log('DRIVERODS Slash Command Manager');
+        console.log('Commands are read from discord-tools/commands.js.');
         console.log('\n1. Deploy command registry');
         console.log('2. List registered commands');
         console.log('3. Delete one registered command');

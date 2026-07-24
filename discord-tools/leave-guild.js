@@ -37,7 +37,7 @@ async function main() {
     let client;
 
     try {
-        console.log('DriverODS Guild Manager');
+        console.log('DRIVERODS Guild Manager');
         console.log('\n1. List servers containing the bot');
         console.log('2. Leave a server');
         console.log('0. Exit');
