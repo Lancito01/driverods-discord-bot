@@ -49,8 +49,27 @@ export function logger(
     return;
 }
 
-export function fetchCarBrands(): object {
-    
+export type vehicle = {
+    Make_ID: number
+    Make_Name: string
+    Model_ID: number
+    Model_Name: string
+}
 
-    return {};
+export async function getModelsArrayForMake(make: string): Promise<string[]> {
+    return await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${make}?format=json`)
+        .then(res => res.json())
+        .then(result => result.Results) // only return the Results array, not the entire object
+        .catch(err => console.error(err));
+}
+
+export async function getModelsForMakeId(makeId: number): Promise<vehicle[]> {
+    return await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeId/${makeId}?format=json`)
+        .then(res => res.json())
+        .then(result => result.Results)
+        .catch(err => console.error(err));
+}
+
+export function getModelForModelsAndModelId(models: vehicle[], modelId: number): vehicle | undefined {
+    return models.find((model: vehicle) => model.Model_ID === modelId);
 }

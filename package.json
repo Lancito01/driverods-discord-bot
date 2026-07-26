@@ -22,10 +22,12 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.1",
     "discord.js": "^14.27.0",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20.11.0",
     "typescript": "^5.4.5"
   }
