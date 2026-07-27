@@ -55,6 +55,10 @@ client.on('interactionCreate', async (interaction) => {
                     return SlashCommands.commandSet(commandInteraction);
                 case 'get':
                     return SlashCommands.commandGet(commandInteraction);
+                case 'clear':
+                    return SlashCommands.commandClear(commandInteraction);
+                case 'restart':
+                    return SlashCommands.commandRestart(commandInteraction);
                 default:
                     return;
             }
@@ -141,14 +145,14 @@ client.on('guildMemberUpdate', async (oldMember: GuildMember | PartialGuildMembe
     if (consumeVehicleNicknameSync(newMember.id)) return;
     if (oldMember.nickname === newMember.nickname) return;
     logger(
-        `Detected nickname change by ${newMember.displayName}\n${oldMember.displayName} => ${newMember.nickname}`,
+        `Detected nickname change by ${newMember.displayName}\n${oldMember.displayName} => ${newMember.displayName}`,
         "yellow"
     );
 
     const dbEntry: databaseEntry | undefined = getUserCarPreference(newMember.user.id);
     if (!dbEntry) return;
 
-    await updateMemberNicknameWithVehiclePreference(dbEntry.make_id, dbEntry.model_id, newMember);
+    await updateMemberNicknameWithVehiclePreference(dbEntry.make_id, dbEntry.model_id, newMember, newMember.displayName);
 });
 
 client.login(process.env.DISCORD_TOKEN)

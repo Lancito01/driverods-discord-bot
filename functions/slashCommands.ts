@@ -1,12 +1,16 @@
 import {AutocompleteFocusedOption, AutocompleteInteraction, ChatInputCommandInteraction, GuildMember} from "discord.js";
-import {databaseEntry, getUserCarPreference, saveUserCarPreference} from "./db";
+import {databaseEntry, getUserCarPreference, removeUserCarPreference, saveUserCarPreference} from "./db";
 import {
+    beginVehicleNicknameSync,
     getModelsArrayForMake,
     getVehicleDisplayName,
     getVehicleForMakeAndModelId,
     updateMemberNicknameWithVehiclePreference,
     vehicle
 } from "./utils";
+import {config} from "dotenv"
+
+config();
 
 export async function autocompleteSet(interaction: AutocompleteInteraction, focusedOption: AutocompleteFocusedOption) {
     const apiLink = "https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/{}?format=json";
@@ -54,7 +58,7 @@ export async function commandSet(interaction: ChatInputCommandInteraction) {
 
             saveUserCarPreference(interaction.user.id, makeId, modelId);
 
-            await updateMemberNicknameWithVehiclePreference(makeId, modelId, interaction.member as GuildMember);
+            await updateMemberNicknameWithVehiclePreference(makeId, modelId, interaction.member as GuildMember, undefined);
 
             await interaction.reply(`Saved car preference: ${getVehicleDisplayName(vehicle)}`);
 
@@ -83,10 +87,36 @@ export async function commandGet(interaction: ChatInputCommandInteraction): Prom
             }
 
             await interaction.reply(getVehicleDisplayName(vehicle));
-            await updateMemberNicknameWithVehiclePreference(preferences.make_id, preferences.model_id, interaction.member as GuildMember);
+            await updateMemberNicknameWithVehiclePreference(preferences.make_id, preferences.model_id, interaction.member as GuildMember, undefined);
             return;
         }
         default:
             return;
     }
+}
+
+export async function commandClear(interaction: ChatInputCommandInteraction): Promise<void> {
+    switch (interaction.options.getSubcommand()) {
+        case "car": {
+            removeUserCarPreference(interaction.user.id);
+
+            const member = interaction.member as GuildMember;
+
+            if (!member)
+                return;
+
+            beginVehicleNicknameSync(member.id, 1);
+            await member.setNickname(null, "Clearing car preference.");
+            return;
+        }
+        default:
+            return;
+    }
+}
+
+export async function commandRestart(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (interaction.user.id != process.env.ANDY_DISCORD_ID) return;
+
+    await interaction.reply("> Restarting bot...");
+    process.exit(0);
 }

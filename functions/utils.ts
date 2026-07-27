@@ -7,7 +7,7 @@ type VehicleNicknameSyncState = {
 
 const vehicleNicknameUpdateStates = new Map<string, VehicleNicknameSyncState>();
 
-function beginVehicleNicknameSync(memberId: string): void {
+export function beginVehicleNicknameSync(memberId: string, remainingEvents: number = 2): void {
     const existingState = vehicleNicknameUpdateStates.get(memberId);
     if (existingState) {
         clearTimeout(existingState.timeout);
@@ -18,7 +18,7 @@ function beginVehicleNicknameSync(memberId: string): void {
     }, 10_000);
 
     vehicleNicknameUpdateStates.set(memberId, {
-        remainingEvents: 2,
+        remainingEvents,
         timeout,
     });
 }
@@ -119,21 +119,24 @@ export function getVehicleDisplayName(vehicle: vehicle): string {
  * @param makeId Vehicle make ID
  * @param modelId Vehicle model ID
  * @param guildMember GuildMember to update
+ * @param nickname Custom nickname to use instead of displayName
  */
 export async function updateMemberNicknameWithVehiclePreference(
     makeId: number,
     modelId: number,
-    guildMember: GuildMember
+    guildMember: GuildMember,
+    nickname: string | undefined
 ): Promise<void> {
     beginVehicleNicknameSync(guildMember.id);
 
     const vehicle = await getVehicleForMakeAndModelId(makeId, modelId);
     if (!vehicle) return undefined;
 
-    await guildMember.setNickname(null)
-        .catch(err => console.error(err));
+    if (!nickname)
+        await guildMember.setNickname(null)
+            .catch(err => console.error(err));
 
-    const newNickname = `${guildMember.displayName} [${getVehicleDisplayName(vehicle)}]`;
+    const newNickname = `${nickname || guildMember.displayName} [${getVehicleDisplayName(vehicle)}]`;
 
     await guildMember.setNickname(newNickname, "Updating nickname with vehicle preference")
         .catch(err => console.error(err));

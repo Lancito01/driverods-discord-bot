@@ -52,8 +52,14 @@ const commands = [
             (cmd) => cmd
                 .setName('car')
                 .setDescription('Clears the user\'s car\'s make and model.')
-        )
+        ),
 
+    new SlashCommandBuilder()
+        .setName("restart")
+        .setDescription("Restarts the bot.")
+        .setContexts(
+            InteractionContextType.Guild
+        )
 ];
 
 module.exports = commands;
