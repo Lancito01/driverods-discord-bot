@@ -1,20 +1,23 @@
 import {config} from 'dotenv';
 import {
+    AutocompleteInteraction,
+    ChatInputCommandInteraction,
     Client,
     GatewayIntentBits,
-    Message,
-    Partials,
-    OAuth2Scopes,
     Guild,
+    GuildMember,
     InteractionType,
-    ChatInputCommandInteraction,
-    AutocompleteInteraction
+    Message,
+    OAuth2Scopes,
+    PartialGuildMember,
+    Partials
 } from 'discord.js';
+import {consumeVehicleNicknameSync, logger, updateMemberNicknameWithVehiclePreference} from './functions/utils';
+import {execSync} from 'child_process';
+import * as SlashCommands from './functions/slashCommands';
+import {databaseEntry, getUserCarPreference} from "./functions/db";
 
 config();
-
-import {logger} from './functions/utils';
-import {execSync} from 'child_process';
 
 const client = new Client({
     partials: [
@@ -24,6 +27,7 @@ const client = new Client({
     ],
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildVoiceStates,
@@ -40,8 +44,6 @@ const client = new Client({
 let isRunning: { [key: string]: boolean } = {};
 let MessagesBuffer: { [key: string]: Message[] } = {};
 
-import * as SlashCommands from './functions/slashCommands';
-
 client.on('interactionCreate', async (interaction) => {
     const {type} = interaction;
     switch (type) {
@@ -51,6 +53,8 @@ client.on('interactionCreate', async (interaction) => {
             switch (commandInteraction.commandName) {
                 case 'set':
                     return SlashCommands.commandSet(commandInteraction);
+                case 'get':
+                    return SlashCommands.commandGet(commandInteraction);
                 default:
                     return;
             }
@@ -109,7 +113,7 @@ process.on('uncaughtException', (err: Error /*, origin*/): void => {
     console.log(err);
 });
 
-client.on('ready', async function (): Promise<void> {
+client.on('clientReady', async function (): Promise<void> {
     console.log();
     logger(`${client.user!.tag} has successfully logged in!`, "green", "bold");
     console.log("Invite Link:");
@@ -126,9 +130,26 @@ client.on('ready', async function (): Promise<void> {
 });
 
 client.on('guildCreate', async function (guild: Guild): Promise<void> {
-    client.users.fetch(process.env.ANDY_DISCORD_ID!.toString()).then(async user => user.send(`🎉 I have been added to a new server! 🎉\n- Server name: ${guild.name}\n- Server ID: ${guild.id}\n- Server owner: ${await guild.fetchOwner().then(guildMember => {
-        return guildMember.user.tag
-    })}`))
+    client.users.fetch(process.env.ANDY_DISCORD_ID!.toString()).then(async user => user.send(
+        `🎉 I have been added to a new server! 🎉\n- Server name: ${guild.name}\n- Server ID: ${guild.id}\n- Server owner: ${await guild.fetchOwner().then(guildMember => {
+            return guildMember.user.tag
+        })}`
+    ))
 });
 
-client.login(process.env.DISCORD_TOKEN); //? Log the bot into discord
+client.on('guildMemberUpdate', async (oldMember: GuildMember | PartialGuildMember, newMember: GuildMember): Promise<void> => {
+    if (consumeVehicleNicknameSync(newMember.id)) return;
+    if (oldMember.nickname === newMember.nickname) return;
+    logger(
+        `Detected nickname change by ${newMember.displayName}\n${oldMember.displayName} => ${newMember.nickname}`,
+        "yellow"
+    );
+
+    const dbEntry: databaseEntry | undefined = getUserCarPreference(newMember.user.id);
+    if (!dbEntry) return;
+
+    await updateMemberNicknameWithVehiclePreference(dbEntry.make_id, dbEntry.model_id, newMember);
+});
+
+client.login(process.env.DISCORD_TOKEN)
+    .then(() => console.log("> Logging in...")); //? Log the bot into discord

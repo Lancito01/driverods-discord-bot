@@ -1,3 +1,41 @@
+import {GuildMember} from "discord.js";
+
+type VehicleNicknameSyncState = {
+    remainingEvents: number;
+    timeout: ReturnType<typeof setTimeout>;
+}
+
+const vehicleNicknameUpdateStates = new Map<string, VehicleNicknameSyncState>();
+
+function beginVehicleNicknameSync(memberId: string): void {
+    const existingState = vehicleNicknameUpdateStates.get(memberId);
+    if (existingState) {
+        clearTimeout(existingState.timeout);
+    }
+
+    const timeout = setTimeout(() => {
+        vehicleNicknameUpdateStates.delete(memberId);
+    }, 10_000);
+
+    vehicleNicknameUpdateStates.set(memberId, {
+        remainingEvents: 2,
+        timeout,
+    });
+}
+
+export function consumeVehicleNicknameSync(memberId: string): boolean {
+    const state = vehicleNicknameUpdateStates.get(memberId);
+    if (!state) return false;
+
+    state.remainingEvents -= 1;
+    if (state.remainingEvents <= 0) {
+        clearTimeout(state.timeout);
+        vehicleNicknameUpdateStates.delete(memberId);
+    }
+
+    return true;
+}
+
 export function logger(
     str: string,
     color: string | undefined = undefined,
@@ -25,8 +63,6 @@ export function logger(
         case "white":
             str = `\x1b[37m${str}`;
             break;
-        default:
-            str = str;
     }
     switch (type) {
         case "bold":
@@ -41,8 +77,6 @@ export function logger(
         case "strikethrough":
             str = `\u001b[9m${str}`;
             break;
-        default:
-            str = str;
     }
     str += "\x1b[0m";
     console.log(str);
@@ -70,6 +104,40 @@ export async function getModelsForMakeId(makeId: number): Promise<vehicle[]> {
         .catch(err => console.error(err));
 }
 
-export function getModelForModelsAndModelId(models: vehicle[], modelId: number): vehicle | undefined {
+export async function getVehicleForMakeAndModelId(makeId: number, modelId: number): Promise<vehicle | undefined> {
+    const models: vehicle[] = await getModelsForMakeId(makeId);
     return models.find((model: vehicle) => model.Model_ID === modelId);
 }
+
+export function getVehicleDisplayName(vehicle: vehicle): string {
+    return `${vehicle.Make_Name} ${vehicle.Model_Name}`;
+}
+
+/**
+ * Update a guild member's nickname based on their vehicle preference.
+ * Resets the nickname to null, then sets it to displayName + [vehicle].
+ * @param makeId Vehicle make ID
+ * @param modelId Vehicle model ID
+ * @param guildMember GuildMember to update
+ */
+export async function updateMemberNicknameWithVehiclePreference(
+    makeId: number,
+    modelId: number,
+    guildMember: GuildMember
+): Promise<void> {
+    beginVehicleNicknameSync(guildMember.id);
+
+    const vehicle = await getVehicleForMakeAndModelId(makeId, modelId);
+    if (!vehicle) return undefined;
+
+    await guildMember.setNickname(null)
+        .catch(err => console.error(err));
+
+    const newNickname = `${guildMember.displayName} [${getVehicleDisplayName(vehicle)}]`;
+
+    await guildMember.setNickname(newNickname, "Updating nickname with vehicle preference")
+        .catch(err => console.error(err));
+
+    logger(`Updated nickname for ${guildMember.user.tag} to "${newNickname}"`, "green");
+}
+

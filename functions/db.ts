@@ -6,7 +6,7 @@ const dbDirectory = path.resolve(process.cwd(), "data");
 const dbPath = path.join(dbDirectory, "driverods.sqlite");
 
 if (!fs.existsSync(dbDirectory)) {
-    fs.mkdirSync(dbDirectory, { recursive: true });
+    fs.mkdirSync(dbDirectory, {recursive: true});
 }
 
 const db = new Database(dbPath);
@@ -34,8 +34,22 @@ export function saveUserCarPreference(userId: string, makeId: number, modelId: n
     stmt.run(userId, makeId, modelId);
 }
 
-export function getUserCarPreference(userId: string): { user_id: string; make_id: number; model_id: number } | undefined {
+export function removeUserCarPreference(userId: string): void {
+    const stmt = db.prepare(`
+        DELETE FROM user_car_preferences WHERE user_id = ?
+    `);
+    stmt.run(userId);
+}
+
+export type databaseEntry = {
+    user_id: string;
+    make_id: number;
+    model_id: number;
+}
+
+export function getUserCarPreference(userId: string): databaseEntry | undefined {
     return db.prepare(
         "SELECT user_id, make_id, model_id FROM user_car_preferences WHERE user_id = ?"
-    ).get(userId) as { user_id: string; make_id: number; model_id: number } | undefined;
+    ).get(userId) as databaseEntry | undefined;
 }
+
