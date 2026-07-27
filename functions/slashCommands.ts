@@ -106,7 +106,9 @@ export async function commandClear(interaction: ChatInputCommandInteraction): Pr
                 return;
 
             beginVehicleNicknameSync(member.id, 1);
-            await member.setNickname(null, "Clearing car preference.");
+            await member.setNickname(null, "Clearing car preference.")
+                .catch(err => console.error(err));
+            await interaction.reply("Cleared car preference.");
             return;
         }
         default:
