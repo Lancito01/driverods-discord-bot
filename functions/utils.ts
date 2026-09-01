@@ -1,4 +1,5 @@
 import {GuildMember} from "discord.js";
+import { getApprovedCustomVehiclesByMake, getCustomVehicleById, databaseEntry } from "./db";
 
 type VehicleNicknameSyncState = {
     remainingEvents: number;
@@ -66,16 +67,16 @@ export function logger(
     }
     switch (type) {
         case "bold":
-            str = `\u001b[1m${str}`;
+            str = `[1m${str}`;
             break;
         case "underline":
-            str = `\u001b[4m${str}`;
+            str = `[4m${str}`;
             break;
         case "inverse":
-            str = `\u001b[7m${str}`;
+            str = `[7m${str}`;
             break;
         case "strikethrough":
-            str = `\u001b[9m${str}`;
+            str = `[9m${str}`;
             break;
     }
     str += "\x1b[0m";
@@ -90,18 +91,30 @@ export type vehicle = {
     Model_Name: string
 }
 
-export async function getModelsArrayForMake(make: string): Promise<string[]> {
-    return await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${make}?format=json`)
-        .then(res => res.json())
-        .then(result => result.Results) // only return the Results array, not the entire object
-        .catch(err => console.error(err));
+export async function getModelsArrayForMake(make: string): Promise<vehicle[]> {
+    try {
+        const [apiResults, customResults] = await Promise.all([
+            fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${make}?format=json`)
+                .then(res => res.json())
+                .then(result => result.Results || []),
+            getApprovedCustomVehiclesByMake(make)
+        ]);
+
+        return [...apiResults, ...customResults];
+    } catch (err) {
+        console.error(err);
+        return [];
+    }
 }
 
 export async function getModelsForMakeId(makeId: number): Promise<vehicle[]> {
     return await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeId/${makeId}?format=json`)
         .then(res => res.json())
         .then(result => result.Results)
-        .catch(err => console.error(err));
+        .catch(err => {
+            console.error(err);
+            return [];
+        });
 }
 
 export async function getVehicleForMakeAndModelId(makeId: number, modelId: number): Promise<vehicle | undefined> {
@@ -116,20 +129,24 @@ export function getVehicleDisplayName(vehicle: vehicle): string {
 /**
  * Update a guild member's nickname based on their vehicle preference.
  * Resets the nickname to null, then sets it to displayName + [vehicle].
- * @param makeId Vehicle make ID
- * @param modelId Vehicle model ID
+ * @param preference User's car preference from DB
  * @param guildMember GuildMember to update
  * @param nickname Custom nickname to use instead of displayName
  */
 export async function updateMemberNicknameWithVehiclePreference(
-    makeId: number,
-    modelId: number,
+    preference: databaseEntry,
     guildMember: GuildMember,
     nickname: string | undefined
 ): Promise<void> {
     beginVehicleNicknameSync(guildMember.id);
 
-    const vehicle = await getVehicleForMakeAndModelId(makeId, modelId);
+    let vehicle: vehicle | undefined;
+    if (preference.custom_id) {
+        vehicle = getCustomVehicleById(preference.custom_id);
+    } else if (preference.make_id && preference.model_id) {
+        vehicle = await getVehicleForMakeAndModelId(preference.make_id, preference.model_id);
+    }
+
     if (!vehicle) return undefined;
 
     if (!nickname)
@@ -144,3 +161,29 @@ export async function updateMemberNicknameWithVehiclePreference(
     logger(`Updated nickname for ${guildMember.user.tag} to "${newNickname}"`, "green");
 }
 
+export function levenshteinDistance(a: string, b: string): number {
+    const matrix = [];
+
+    for (let i = 0; i <= b.length; i++) {
+        matrix[i] = [i];
+    }
+
+    for (let j = 0; j <= a.length; j++) {
+        matrix[0][j] = j;
+    }
+
+    for (let i = 1; i <= b.length; i++) {
+        for (let j = 1; j <= a.length; j++) {
+            if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+                );
+            }
+        }
+    }
+
+    return matrix[b.length][a.length];
+}
