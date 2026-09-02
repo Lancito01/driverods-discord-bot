@@ -100,7 +100,7 @@ export async function getModelsArrayForMake(make: string): Promise<vehicle[]> {
             getApprovedCustomVehiclesByMake(make)
         ]);
 
-        return [...apiResults, ...customResults];
+        return [...customResults, ...apiResults];
     } catch (err) {
         console.error(err);
         return [];
@@ -118,8 +118,20 @@ export async function getModelsForMakeId(makeId: number): Promise<vehicle[]> {
 }
 
 export async function getVehicleForMakeAndModelId(makeId: number, modelId: number): Promise<vehicle | undefined> {
+    if (makeId === -1) {
+        return getCustomVehicleById(modelId);
+    }
     const models: vehicle[] = await getModelsForMakeId(makeId);
     return models.find((model: vehicle) => model.Model_ID === modelId);
+}
+
+export async function getVehicleFromPreference(preference: databaseEntry): Promise<vehicle | undefined> {
+    if (preference.custom_id) {
+        return getCustomVehicleById(preference.custom_id);
+    } else if (preference.make_id && preference.model_id) {
+        return await getVehicleForMakeAndModelId(preference.make_id, preference.model_id);
+    }
+    return undefined;
 }
 
 export function getVehicleDisplayName(vehicle: vehicle): string {
@@ -140,12 +152,7 @@ export async function updateMemberNicknameWithVehiclePreference(
 ): Promise<void> {
     beginVehicleNicknameSync(guildMember.id);
 
-    let vehicle: vehicle | undefined;
-    if (preference.custom_id) {
-        vehicle = getCustomVehicleById(preference.custom_id);
-    } else if (preference.make_id && preference.model_id) {
-        vehicle = await getVehicleForMakeAndModelId(preference.make_id, preference.model_id);
-    }
+    const vehicle = await getVehicleFromPreference(preference);
 
     if (!vehicle) return undefined;
 

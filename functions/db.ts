@@ -26,6 +26,11 @@ db.exec(`
         admin_id TEXT PRIMARY KEY
     );
 
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS custom_vehicles (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         make TEXT NOT NULL,
@@ -99,12 +104,25 @@ export function removeAdmin(userId: string): void {
     db.prepare("DELETE FROM admins WHERE admin_id = ?").run(userId);
 }
 
+export function setSetting(key: string, value: string): void {
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)").run(key, value);
+}
+
+export function getSetting(key: string): string | undefined {
+    const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as any | undefined;
+    return row?.value;
+}
+
+export function removeSetting(key: string): void {
+    db.prepare("DELETE FROM settings WHERE key = ?").run(key);
+}
+
 // Custom Vehicle Helpers
 export function saveCustomVehicle(make: string, model: string, userId: string): number {
     const result = db.prepare(
         "INSERT INTO custom_vehicles (make, model, submitter_id) VALUES (?, ?, ?)"
     ).run(make, model, userId);
-    return result.lastInsertRowid;
+    return result.lastInsertRowid as number;
 }
 
 export function updateCustomVehicleStatus(id: number, status: string): void {
@@ -117,13 +135,13 @@ export function updateCustomVehicleData(id: number, make: string, model: string)
 
 export function getApprovedCustomVehiclesByMake(make: string): vehicle[] {
     const rows = db.prepare(
-        "SELECT make as Make_Name, model as Model_Name FROM custom_vehicles WHERE make = ? AND status = 'approved'"
-    ).all() as any[];
+        "SELECT id, make as Make_Name, model as Model_Name FROM custom_vehicles WHERE make = ? COLLATE NOCASE AND status = 'approved'"
+    ).all(make) as any[];
 
     return rows.map(row => ({
         Make_ID: -1, // Custom vehicles don't have NHTSA IDs
         Make_Name: row.Make_Name,
-        Model_ID: -1,
+        Model_ID: row.id,
         Model_Name: row.Model_Name
     }));
 }
@@ -138,7 +156,7 @@ export function getCustomVehicleById(id: number): vehicle | undefined {
     return {
         Make_ID: -1,
         Make_Name: row.Make_Name,
-        Model_ID: -1,
+        Model_ID: id,
         Model_Name: row.Model_Name
     };
 }
@@ -147,6 +165,24 @@ export function getCustomVehicleRequest(id: number): any | undefined {
     return db.prepare(
         "SELECT * FROM custom_vehicles WHERE id = ?"
     ).get(id) as any | undefined;
+}
+
+export function deleteCustomVehicle(id: number): void {
+    db.prepare("DELETE FROM custom_vehicles WHERE id = ?").run(id);
+}
+
+export function getCustomVehiclesCount(make?: string): number {
+    const row = db.prepare(
+        "SELECT count(*) as count FROM custom_vehicles WHERE (? IS NULL OR make = ? COLLATE NOCASE)"
+    ).get(make, make) as any;
+    return row?.count || 0;
+}
+
+export function getCustomVehiclesPaged(page: number, limit: number, make?: string): any[] {
+    const offset = (page - 1) * limit;
+    return db.prepare(
+        "SELECT * FROM custom_vehicles WHERE (? IS NULL OR make = ? COLLATE NOCASE) ORDER BY created_at DESC LIMIT ? OFFSET ?"
+    ).all(make, make, limit, offset) as any[];
 }
 
 export function saveNhtsaCache(makeId: number, makeName: string, modelId: number, modelName: string): void {
@@ -158,7 +194,7 @@ export function saveNhtsaCache(makeId: number, makeName: string, modelId: number
 export function getCachedModelsForMake(makeId: number): vehicle[] {
     const rows = db.prepare(
         "SELECT make_name as Make_Name, model_name as Model_Name, make_id as Make_ID, model_id as Model_ID FROM nhtsa_cache WHERE make_id = ?"
-    ).all() as any[];
+    ).all(makeId) as any[];
 
     return rows.map(row => ({
         Make_ID: row.Make_ID,
@@ -166,4 +202,9 @@ export function getCachedModelsForMake(makeId: number): vehicle[] {
         Model_ID: row.Model_ID,
         Model_Name: row.Model_Name
     }));
+}
+
+export function getAllAdmins(): string[] {
+    const rows = db.prepare("SELECT admin_id FROM admins").all() as any[];
+    return rows.map(row => row.admin_id);
 }

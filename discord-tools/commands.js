@@ -88,25 +88,57 @@ const commands = [
                         .setDescription('The Discord ID of the user.')
                         .setRequired(true)
                 )
+        )
+        .addSubcommand(
+            (cmd) => cmd
+                .setName('list')
+                .setDescription('Lists all current admins.')
+        )
+        .addSubcommand(
+            (cmd) => cmd
+                .setName('channel')
+                .setDescription('Sets the channel for car submissions.')
+                .addChannelOption(
+                    (opt) => opt
+                        .setName('channel')
+                        .setDescription('The channel to send submissions to. Leave blank to default to DMs.')
+                        .setRequired(false)
+                )
         ),
 
     new SlashCommandBuilder()
-        .setName("submitcar")
-        .setDescription("Submit a custom car for review.")
+        .setName("submit")
+        .setDescription("Custom vehicle submissions.")
         .setContexts(
             InteractionContextType.Guild
         )
-        .addStringOption(
-            (opt) => opt
-                .setName('make')
-                .setDescription('The make of the car.')
-                .setRequired(true)
+        .addSubcommand(
+            (cmd) => cmd
+                .setName('car')
+                .setDescription('Submit a custom car for review.')
+                .addStringOption(
+                    (opt) => opt
+                        .setName('make')
+                        .setDescription('The make of the car.')
+                        .setRequired(true)
+                )
+                .addStringOption(
+                    (opt) => opt
+                        .setName('model')
+                        .setDescription('The model of the car.')
+                        .setRequired(true)
+                )
         )
-        .addStringOption(
-            (opt) => opt
-                .setName('model')
-                .setDescription('The model of the car.')
-                .setRequired(true)
+        .addSubcommand(
+            (cmd) => cmd
+                .setName('list')
+                .setDescription('Lists and manages custom vehicle entries. (Admin only)')
+                .addStringOption(
+                    (opt) => opt
+                        .setName('make')
+                        .setDescription('Filter by make.')
+                        .setRequired(false)
+                )
         ),
 ];
 
