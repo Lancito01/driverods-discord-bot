@@ -224,7 +224,7 @@ client.on('interactionCreate', async (interaction) => {
                 saveUserCarPreference(request.submitter_id, null, null, requestId);
 
                 // Try to find the user in a guild to update nickname
-                const member = await componentInteraction.client.guilds.cache.values().find((g: Guild) => g.members.cache.has(request.submitter_id))?.members.fetch(request.submitter_id);
+                const member = await componentInteraction.client.guilds.cache.find((g: Guild) => g.members.cache.has(request.submitter_id))?.members.fetch(request.submitter_id);
 
                 if (member) {
                     await updateMemberNicknameWithVehiclePreference({
@@ -331,7 +331,7 @@ client.on('interactionCreate', async (interaction) => {
                 const request = getCustomVehicleRequest(requestId);
                 if (request) {
                     saveUserCarPreference(request.submitter_id, null, null, requestId);
-                    const member = await modalInteraction.client.guilds.cache.values().find((g: Guild) => g.members.cache.has(request.submitter_id))?.members.fetch(request.submitter_id);
+                    const member = await modalInteraction.client.guilds.cache.find((g: Guild) => g.members.cache.has(request.submitter_id))?.members.fetch(request.submitter_id);
                     if (member) {
                         await updateMemberNicknameWithVehiclePreference({
                             user_id: request.submitter_id,
