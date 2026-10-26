@@ -41,7 +41,12 @@ export async function autocompleteSet(interaction: AutocompleteInteraction, focu
     switch (interaction.options.getSubcommand()) {
         case "car": {
             if (focusedOption.name != "model") return; //? only autocomplete for model
-            const makeLookup = interaction.options.getString("make", true);
+            //? not required here: Discord omits "make" from autocomplete payloads until the user fills it in
+            const makeLookup = interaction.options.getString("make")?.trim();
+            if (!makeLookup) {
+                await interaction.respond([]);
+                return;
+            }
             const models = await getModelsArrayForMake(makeLookup);
 
             const suggestions: any[] = (models ?? []) //* ?? is used over || because models can be an empty array, which is falsy, but we still want to use it
