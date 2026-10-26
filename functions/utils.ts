@@ -1,4 +1,4 @@
-import {GuildMember} from "discord.js";
+import {escapeMarkdown, GuildMember} from "discord.js";
 import { getApprovedCustomVehiclesByMake, getCustomVehicleById, databaseEntry } from "./db";
 
 type VehicleNicknameSyncState = {
@@ -94,7 +94,7 @@ export type vehicle = {
 export async function getModelsArrayForMake(make: string): Promise<vehicle[]> {
     try {
         const [apiResults, customResults] = await Promise.all([
-            fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${make}?format=json`)
+            fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMake/${encodeURIComponent(make)}?format=json`)
                 .then(res => res.json())
                 .then(result => result.Results || []),
             getApprovedCustomVehiclesByMake(make)
@@ -138,34 +138,131 @@ export function getVehicleDisplayName(vehicle: vehicle): string {
     return `${vehicle.Make_Name} ${vehicle.Model_Name}`;
 }
 
+export const NICKNAME_MAX_LENGTH = 32; //? Discord's hard limit
+const NICKNAME_MIN_NAME_LENGTH = 10; //? never shorten the member's name below this to make room for the car
+const ELLIPSIS = "…";
+const VEHICLE_TAG_PATTERN = /\s*\[[^\[\]]*\]$/;
+
+/**
+ * Shortens a string to fit within maxLength, ending it with "…" when cut.
+ * Cuts on whole characters so emoji and other multi-unit characters are never split.
+ */
+function truncate(str: string, maxLength: number): string {
+    if (str.length <= maxLength) return str;
+
+    const chars = Array.from(str);
+    while (chars.length > 0 && chars.join("").trimEnd().length + ELLIPSIS.length > maxLength) {
+        chars.pop();
+    }
+    return chars.join("").trimEnd() + ELLIPSIS;
+}
+
+/**
+ * The member's name without the bot's " [vehicle]" tag.
+ * Keeps their server nickname if they have one; falls back to their account name
+ * if there is none, or if the bot previously had to shorten it.
+ */
+export function getBaseName(guildMember: GuildMember): string {
+    const base = guildMember.nickname?.replace(VEHICLE_TAG_PATTERN, "").trim();
+    if (!base || base.endsWith(ELLIPSIS)) return guildMember.user.displayName;
+    return base;
+}
+
+/**
+ * Builds "Name [Make Model]" within Discord's 32 character limit.
+ * Shortening order, stopping at the first that fits:
+ *   1. Name [Make Model]
+ *   2. Name [Model]             (only if the model name has letters, so "Mazda 3" never becomes "[3]")
+ *   3. Na… [Make Model]         (name kept at least NICKNAME_MIN_NAME_LENGTH long)
+ *   4. Na… [Model]
+ *   5. Na… [Mod…]               (last resort for very long model names)
+ */
+export function buildVehicleNickname(baseName: string, vehicle: vehicle): { nickname: string, shortened: boolean } {
+    const fullTag = getVehicleDisplayName(vehicle);
+    const modelTag = vehicle.Model_Name;
+    const tagCandidates = /[a-z]/i.test(modelTag) && modelTag !== fullTag ? [fullTag, modelTag] : [fullTag];
+
+    const format = (name: string, tag: string) => `${name} [${tag}]`;
+    const fits = (nickname: string) => nickname.length <= NICKNAME_MAX_LENGTH;
+
+    for (const tag of tagCandidates) {
+        const nickname = format(baseName, tag);
+        if (fits(nickname)) return {nickname, shortened: tag !== fullTag};
+    }
+
+    for (const tag of tagCandidates) {
+        const nameBudget = NICKNAME_MAX_LENGTH - format("", tag).length;
+        if (nameBudget >= NICKNAME_MIN_NAME_LENGTH) {
+            return {nickname: format(truncate(baseName, nameBudget), tag), shortened: true};
+        }
+    }
+
+    const name = truncate(baseName, NICKNAME_MIN_NAME_LENGTH);
+    const tagBudget = NICKNAME_MAX_LENGTH - format(name, "").length;
+    return {nickname: format(name, truncate(tagCandidates.at(-1)!, tagBudget)), shortened: true};
+}
+
+export type NicknameUpdateResult =
+    | { ok: true, nickname: string, shortened: boolean }
+    | { ok: false, reason: "no-vehicle" | "not-manageable" | "error" };
+
+/**
+ * Sets a guild member's nickname to "Name [vehicle]", shortened to fit Discord's limit if needed.
+ * @param guildMember GuildMember to update
+ * @param vehicle Vehicle to show in the nickname
+ */
+export async function applyVehicleNickname(guildMember: GuildMember, vehicle: vehicle): Promise<NicknameUpdateResult> {
+    //? the bot can't rename the server owner or anyone with a role above its own
+    if (!guildMember.manageable) return {ok: false, reason: "not-manageable"};
+
+    const {nickname, shortened} = buildVehicleNickname(getBaseName(guildMember), vehicle);
+    if (guildMember.nickname === nickname) return {ok: true, nickname, shortened};
+
+    beginVehicleNicknameSync(guildMember.id, 1);
+    try {
+        await guildMember.setNickname(nickname, "Updating nickname with vehicle preference");
+    } catch (err) {
+        consumeVehicleNicknameSync(guildMember.id); //? no update event is coming, don't swallow the member's next change
+        console.error(err);
+        return {ok: false, reason: "error"};
+    }
+
+    logger(`Updated nickname for ${guildMember.user.tag} to "${nickname}"`, "green");
+    return {ok: true, nickname, shortened};
+}
+
 /**
  * Update a guild member's nickname based on their vehicle preference.
- * Resets the nickname to null, then sets it to displayName + [vehicle].
  * @param preference User's car preference from DB
  * @param guildMember GuildMember to update
- * @param nickname Custom nickname to use instead of displayName
  */
 export async function updateMemberNicknameWithVehiclePreference(
     preference: databaseEntry,
-    guildMember: GuildMember,
-    nickname: string | undefined
-): Promise<void> {
-    beginVehicleNicknameSync(guildMember.id);
-
+    guildMember: GuildMember
+): Promise<NicknameUpdateResult> {
     const vehicle = await getVehicleFromPreference(preference);
+    if (!vehicle) return {ok: false, reason: "no-vehicle"};
 
-    if (!vehicle) return undefined;
+    return applyVehicleNickname(guildMember, vehicle);
+}
 
-    if (!nickname)
-        await guildMember.setNickname(null)
-            .catch(err => console.error(err));
+/**
+ * A short, member-facing note about what happened to their nickname, or an empty string if nothing needs saying.
+ */
+export function describeNicknameResult(result: NicknameUpdateResult): string {
+    if (result.ok) {
+        if (!result.shortened) return "";
+        return `\nDiscord nicknames can be at most ${NICKNAME_MAX_LENGTH} characters, so your nickname was shortened to **${escapeMarkdown(result.nickname)}**.`;
+    }
 
-    const newNickname = `${nickname || guildMember.displayName} [${getVehicleDisplayName(vehicle)}]`;
-
-    await guildMember.setNickname(newNickname, "Updating nickname with vehicle preference")
-        .catch(err => console.error(err));
-
-    logger(`Updated nickname for ${guildMember.user.tag} to "${newNickname}"`, "green");
+    switch (result.reason) {
+        case "not-manageable":
+            return "\nI couldn't update your nickname: I can't change nicknames for the server owner or members with a higher role than mine.";
+        case "error":
+            return "\nI couldn't update your nickname right now. Please try again later.";
+        default:
+            return "";
+    }
 }
 
 export function levenshteinDistance(a: string, b: string): number {

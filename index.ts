@@ -18,9 +18,10 @@ import {
     StringSelectMenuInteraction,
     ButtonBuilder,
     ButtonStyle,
-    StringSelectMenuBuilder
+    StringSelectMenuBuilder,
+    escapeMarkdown
 } from 'discord.js';
-import {consumeVehicleNicknameSync, logger, updateMemberNicknameWithVehiclePreference} from './functions/utils';
+import {consumeVehicleNicknameSync, describeNicknameResult, logger, NICKNAME_MAX_LENGTH, updateMemberNicknameWithVehiclePreference} from './functions/utils';
 import {execSync} from 'child_process';
 import * as SlashCommands from './functions/slashCommands';
 import {databaseEntry, getUserCarPreference, saveUserCarPreference, updateCustomVehicleStatus, updateCustomVehicleData, getCustomVehicleRequest, removeAdmin, isAdmin} from "./functions/db";
@@ -226,17 +227,15 @@ client.on('interactionCreate', async (interaction) => {
                 // Try to find the user in a guild to update nickname
                 const member = await componentInteraction.client.guilds.cache.find((g: Guild) => g.members.cache.has(request.submitter_id))?.members.fetch(request.submitter_id);
 
-                if (member) {
-                    await updateMemberNicknameWithVehiclePreference({
-                        user_id: request.submitter_id,
-                        make_id: null,
-                        model_id: null,
-                        custom_id: requestId
-                    }, member as GuildMember, undefined);
-                }
+                const nicknameNote = member ? describeNicknameResult(await updateMemberNicknameWithVehiclePreference({
+                    user_id: request.submitter_id,
+                    make_id: null,
+                    model_id: null,
+                    custom_id: requestId
+                }, member as GuildMember)) : "";
 
                 await componentInteraction.reply({ content: `Approved car request #${requestId} for <@${request.submitter_id}>.`, ephemeral: true });
-                await componentInteraction.client.users.fetch(request.submitter_id).then((user: any) => user.send(`🎉 Your custom car request for ${request.make} ${request.model} has been approved!`));
+                await componentInteraction.client.users.fetch(request.submitter_id).then((user: any) => user.send(`🎉 Your custom car request for ${request.make} ${request.model} has been approved!${nicknameNote}`));
 
                 await componentInteraction.message.delete().catch((err: any) => console.error("Failed to delete request message:", err));
                 return;
@@ -332,15 +331,13 @@ client.on('interactionCreate', async (interaction) => {
                 if (request) {
                     saveUserCarPreference(request.submitter_id, null, null, requestId);
                     const member = await modalInteraction.client.guilds.cache.find((g: Guild) => g.members.cache.has(request.submitter_id))?.members.fetch(request.submitter_id);
-                    if (member) {
-                        await updateMemberNicknameWithVehiclePreference({
-                            user_id: request.submitter_id,
-                            make_id: null,
-                            model_id: null,
-                            custom_id: requestId
-                        }, member as GuildMember, undefined);
-                    }
-                    await modalInteraction.client.users.fetch(request.submitter_id).then((user: any) => user.send(`🎉 Your custom car request for ${make} ${model} has been modified and approved!`));
+                    const nicknameNote = member ? describeNicknameResult(await updateMemberNicknameWithVehiclePreference({
+                        user_id: request.submitter_id,
+                        make_id: null,
+                        model_id: null,
+                        custom_id: requestId
+                    }, member as GuildMember)) : "";
+                    await modalInteraction.client.users.fetch(request.submitter_id).then((user: any) => user.send(`🎉 Your custom car request for ${make} ${model} has been modified and approved!${nicknameNote}`));
                 }
 
                 await modalInteraction.reply({ content: `Modified and approved car request #${requestId}.`, ephemeral: true });
@@ -426,7 +423,15 @@ client.on('guildMemberUpdate', async (oldMember: GuildMember | PartialGuildMembe
     const dbEntry: databaseEntry | undefined = getUserCarPreference(newMember.user.id);
     if (!dbEntry) return;
 
-    await updateMemberNicknameWithVehiclePreference(dbEntry, newMember, newMember.displayName);
+    const result = await updateMemberNicknameWithVehiclePreference(dbEntry, newMember);
+
+    //? the member picked this nickname themselves, so let them know why it changed
+    if (result.ok && result.shortened) {
+        await newMember.send(
+            `Heads up: your nickname in **${escapeMarkdown(newMember.guild.name)}** shows your car, and Discord nicknames can be at most ${NICKNAME_MAX_LENGTH} characters. ` +
+            `I shortened it to **${escapeMarkdown(result.nickname)}**. Choose a shorter nickname if you'd like more control over how it looks.`
+        ).catch(() => null); //? members with DMs closed just won't get the note
+    }
 });
 
 client.login(process.env.DISCORD_TOKEN)

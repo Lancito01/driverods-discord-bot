@@ -24,12 +24,15 @@ import {
     setSetting
 } from "./db";
 import {
+    applyVehicleNickname,
     beginVehicleNicknameSync,
+    consumeVehicleNicknameSync,
+    describeNicknameResult,
+    getBaseName,
     getModelsArrayForMake,
     getVehicleDisplayName,
     getVehicleForMakeAndModelId,
-    getVehicleFromPreference,
-    updateMemberNicknameWithVehiclePreference
+    getVehicleFromPreference
 } from "./utils";
 import {config} from "dotenv"
 
@@ -74,26 +77,23 @@ export async function commandSet(interaction: ChatInputCommandInteraction) {
             const modelId = Number.parseInt(modelIdStr, 10);
 
             if (Number.isNaN(makeId) || Number.isNaN(modelId)) {
-                await interaction.reply("That selection is invalid.");
+                await interaction.reply({content: "That selection is invalid. Please pick a model from the suggestions list.", ephemeral: true});
                 return;
             }
 
+            await interaction.deferReply(); //? NHTSA lookups can take longer than Discord's 3 second reply window
+
             const vehicle = await getVehicleForMakeAndModelId(makeId, modelId);
             if (!vehicle) {
-                await interaction.reply("Failed to fetch model.")
+                await interaction.editReply("Failed to fetch model.")
                 return;
             }
 
             saveUserCarPreference(interaction.user.id, makeId, modelId);
 
-            await updateMemberNicknameWithVehiclePreference({
-                user_id: interaction.user.id,
-                make_id: makeId,
-                model_id: modelId,
-                custom_id: null
-            }, interaction.member as GuildMember, undefined);
+            const nicknameResult = await applyVehicleNickname(interaction.member as GuildMember, vehicle);
 
-            await interaction.reply(`Saved car preference: ${getVehicleDisplayName(vehicle)}`);
+            await interaction.editReply(`Saved car preference: ${getVehicleDisplayName(vehicle)}${describeNicknameResult(nicknameResult)}`);
 
             return;
         }
@@ -120,7 +120,7 @@ export async function commandGet(interaction: ChatInputCommandInteraction): Prom
             }
 
             await interaction.reply(getVehicleDisplayName(vehicle));
-            await updateMemberNicknameWithVehiclePreference(preferences, interaction.member as GuildMember, undefined);
+            await applyVehicleNickname(interaction.member as GuildMember, vehicle);
             return;
         }
         default:
@@ -131,6 +131,7 @@ export async function commandGet(interaction: ChatInputCommandInteraction): Prom
 export async function commandClear(interaction: ChatInputCommandInteraction): Promise<void> {
     switch (interaction.options.getSubcommand()) {
         case "car": {
+            const hadPreference = getUserCarPreference(interaction.user.id) !== undefined;
             removeUserCarPreference(interaction.user.id);
 
             const member = interaction.member as GuildMember;
@@ -138,9 +139,18 @@ export async function commandClear(interaction: ChatInputCommandInteraction): Pr
             if (!member)
                 return;
 
-            beginVehicleNicknameSync(member.id, 1);
-            await member.setNickname(null, "Clearing car preference.")
-                .catch(err => console.error(err));
+            //? only strip the car tag; keep any server nickname the member chose
+            const baseName = getBaseName(member);
+            const restoredNickname = baseName === member.user.displayName ? null : baseName;
+
+            if (hadPreference && member.manageable && member.nickname !== restoredNickname) {
+                beginVehicleNicknameSync(member.id, 1);
+                await member.setNickname(restoredNickname, "Clearing car preference.")
+                    .catch(err => {
+                        consumeVehicleNicknameSync(member.id);
+                        console.error(err);
+                    });
+            }
             await interaction.reply("Cleared car preference.");
             return;
         }
